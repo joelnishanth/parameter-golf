@@ -1,0 +1,13 @@
+{
+  "author": "Joel Ponukumatla",
+  "github_id": "joelponukumatla",
+  "name": "Consensus Stack — int6+zstd, MLP3x, fp16 embed, sliding window eval",
+  "blurb": "Implements the five-technique consensus stack identified across all top open PRs as of 2026-03-19: int6+zstd quantization, MLP hidden=1536, fp16 tied embedding passthrough, sliding window evaluation (stride=64), and co-optimized LR/schedule (MATRIX_LR=0.02, MUON_MOMENTUM=0.99, WARMDOWN_ITERS=3000).",
+  "date": "2026-03-19",
+  "val_loss": null,
+  "val_bpb": null,
+  "sliding_window_bpb": null,
+  "bytes_total": null,
+  "bytes_code": null,
+  "status": "pending_cloud_run"
+}

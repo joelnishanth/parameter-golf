@@ -1,0 +1,39 @@
+---
+description: Core competition guardrails — keep every session focused on winning Parameter Golf
+alwaysApply: true
+---
+
+# Parameter Golf — Competition Rules
+
+## The single goal
+Beat **1.153 BPB** (≥0.005 below the current open-PR frontier of ~1.158) to take the leaderboard.
+
+## What to always check before suggesting changes
+
+1. Does this change affect the artifact size? The hard cap is **16,000,000 bytes** (= `len(train_gpt.py UTF-8)` + `zstd(int6(weights))`). Estimate the delta before coding.
+2. Will training still finish in **≤10 minutes on 8×H100 SXM**? Per-step time matters as much as model quality.
+3. Will **eval** still finish in **≤10 minutes on 8×H100**? Sliding window eval takes time — benchmark stride choices.
+4. Is this technique **already proven in an open PR**? If yes, note it and don't treat it as novel. See `COMPETITION_LEARNINGS.md`.
+
+## Consensus stack — never regress from these
+
+All competitive work must include all five:
+- int6 quantization + zstd-22 compression (not int8 + zlib)
+- MLP hidden=1536 (3× expansion, enabled by int6 space savings)
+- FP16 passthrough for `tok_emb.weight` (tied embedding skip int6)
+- Sliding window evaluation (stride ≤ 512)
+- Tuned LR: `MATRIX_LR=0.02`, `MUON_MOMENTUM=0.99`, `WARMDOWN_ITERS=3000`
+
+## Do not repeat failed experiments
+
+These are confirmed dead ends — do not suggest them:
+- SwiGLU activation (too slow per step)
+- lzma/lzma2 compression (worse than zstd for weight data)
+- Late-stage QAT (insufficient training signal)
+- Depth recurrence without unlimited compute
+
+## Scope discipline
+
+- All competitive configs live in `records/track_10min_16mb/<date>_<name>/train_gpt.py` — never the root script
+- Root `train_gpt.py` stays ≤1500 lines; it is a starter, not a SOTA config
+- Do not refactor unrelated code; every diff must serve the BPB goal

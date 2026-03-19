@@ -1,0 +1,47 @@
+---
+description: Coding conventions for train_gpt.py and all record submission scripts
+globs: "**/train_gpt.py"
+alwaysApply: false
+---
+
+# train_gpt.py Conventions
+
+## Artifact size is a first-class constraint
+
+Every code change has a byte cost. The limit is `16,000,000 bytes` total (code + compressed weights).
+- Keep the script lean. No docstrings on obvious functions, no verbose comments.
+- Prefer in-place modifications to adding new classes when extending quantization or eval logic.
+- When adding a new technique, estimate its artifact size impact before implementing.
+
+## Hyperparameters are env-var driven
+
+All tunable values belong in the `Hyperparameters` class as `os.environ.get(...)` reads. Never hardcode a number that should be tunable.
+
+## Quantization pipeline rules
+
+- The submission-relevant metric is `final_int8_zlib_roundtrip_exact val_bpb` — always validate after the quantization round-trip.
+- When changing the quantization scheme (e.g., int8 → int6, zlib → zstd), update **both** `quantize_state_dict_int8` and `dequantize_state_dict_int8` and verify round-trip fidelity before claiming a BPB number.
+- `tok_emb.weight` must always use fp16 passthrough, not int6/int8 quantization.
+
+## Sliding window eval
+
+- The eval BPB number reported in `submission.json` must use sliding window eval if the model was trained/tuned for it.
+- Always report both standard BPB and sliding window BPB in the README so results are comparable.
+- Sliding window stride must complete eval in ≤10 min on 8×H100.
+
+## Record folder structure
+
+Each submission in `records/` must be self-contained:
+```
+records/track_10min_16mb/<date>_<name>/
+  train_gpt.py   ← must run from this folder
+  README.md      ← explains every change and shows ablation where possible
+  submission.json
+  train.log      ← at least one seed
+```
+
+## What not to touch
+
+- Do not modify `data/` scripts unless the task is specifically about data or tokenization.
+- Do not edit `train_gpt_mlx.py` for competitive changes — it's for local smoke testing only.
+- Do not change `requirements.txt` for competition-specific packages; document them in the record README instead.
