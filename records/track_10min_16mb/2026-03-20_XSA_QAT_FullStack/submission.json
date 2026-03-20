@@ -1,0 +1,13 @@
+{
+  "author": "Joel Ponukumatla",
+  "github_id": "joelnishanth",
+  "name": "11L XSA + Int6 QAT + SmearGate + BigramHash + OrthoInit + SWA + FA3",
+  "blurb": "Combines PR #198 base (11L SmearGate BigramHash OrthoInit WD=0.04 SWA FA3) with XSA on last 3 layers (PR #265, arXiv:2603.09078) and Int6 STE QAT (PR #194). XSA removes self-attention bias in deep layers; QAT closes the 0.011 BPB post-quant gap. No prior PR has combined all three.",
+  "date": "2026-03-20",
+  "val_loss": null,
+  "val_bpb": null,
+  "sliding_window_bpb": null,
+  "bytes_total": null,
+  "bytes_code": 65519,
+  "status": "pending_cloud_run"
+}
