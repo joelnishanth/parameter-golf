@@ -36,6 +36,9 @@ try:
 except ImportError:
     from flash_attn import flash_attn_func as flash_attn_3_func
 
+import torch._dynamo
+torch._dynamo.config.optimize_ddp = False
+
 # -----------------------------
 # HYPERPARAMETERS
 # -----------------------------
