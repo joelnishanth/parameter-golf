@@ -1,66 +1,43 @@
-# 11L + XSA + Int6 STE QAT + Full Stack
+# Record: Full Stack — Tight SWA + VE + Partial RoPE + LN Scale + XSA4 + Late QAT
 
-**Author:** Joel Ponukumatla
-**Date:** 2026-03-20
-**Score:** val_bpb = pending (pending cloud run on 8xH100)
-
-## Summary
-
-Combines three proven techniques that have never been stacked together:
-1. **PR #198 base** (1.1318 BPB): 11L, SmearGate, BigramHash, OrthoInit+muP, WD=0.04, SWA, FA3
-2. **XSA from PR #265** (1.1307 BPB): Exclusive Self Attention on last 3 layers — subtracts self-value projection from attention output to reduce self-attention bias in deep layers (arXiv:2603.09078)
-3. **Int6 STE QAT from PR #194** (1.1480 BPB): Fake int6 quantization during training with straight-through estimator — model learns quantization-robust weights from step 0
-
-Key insight: PR #198 has a 0.011 BPB post-quant gap (1.1432 pre-quant → 1.1543 post-quant). QAT should close most of this gap. XSA adds a clean ~0.001-0.002 BPB architectural improvement at minimal compute cost (~2ms/step for 3 layers).
+Based on PR #374 frontier (1.1246 BPB) with Flash Attention fallback.
 
 ## Architecture
+- 11 transformer layers, 512-dim, 8 heads (4 KV heads, GQA)
+- 3x MLP expansion with relu-squared
+- XSA on last 4 layers (GQA-aware, zero-alloc)
+- Partial RoPE (16/64 dims) + NTK-aware scaling
+- LN Scale Factor 1/sqrt(layer_idx+1)
+- U-Net skip connections (5 encoder, 6 decoder)
+- SmearGate + BigramHash (2048 buckets, dim=128)
+- Shared Value Embedding (dim=128, layers 9,10)
+- FlashAttention 3 (with FA2 fallback)
+- Orthogonal init with proj scaling
+- Logit softcap 30.0, tied embeddings
 
-| Component | Details |
-|-----------|---------|
-| **Layers** | 11 transformer layers, 512 dim, 8 heads, 4 KV heads (GQA) |
-| **MLP** | 3x expansion (hidden=1536), ReLU² activation |
-| **XSA** | Efficient partial XSA on last 3 layers (GQA-aware, no memory overhead) |
-| **Quantization** | Int6 STE QAT during training; int6 mixed quant (MLP+attn), int8 (embeddings) at export |
-| **Compression** | zstd-22 |
-| **SmearGate** | Per-dim learned sigmoid gate (~512 params) |
-| **BigramHash** | 2048-bucket hash embedding (dim=128→512, scale=0.05) |
-| **Initialization** | Orthogonal + muP (proj scaled by 1/√(2·L)) |
-| **Optimizer** | Muon (WD=0.04, momentum=0.99, warmup 0.92→0.99 over 1500 steps) |
-| **SWA** | Every 120 steps during warmdown (scale < 0.5) |
-| **Attention** | FlashAttention 3 (Hopper) |
-| **Sequence** | Train@2048, eval@2048 |
-| **Eval** | Sliding window stride=64 |
+## Training
+- Muon: lr=0.025, momentum=0.99, WD=0.04
+- AdamW embeddings: lr=0.035, scalars: lr=0.025, WD=0.04
+- Gradient clip: 0.3
+- Batch: 786,432 tokens/step, seq_len=2048
+- Warmdown: 3000 iters (wallclock-based)
+- Tight SWA: every 50 steps when scale<0.2
+- Late QAT: STE int6 when LR scale<0.1
 
-## Run Command
+## Quantization
+- Int6 per-row for MLP + attention weights
+- Int8 per-row for embeddings
+- zstd level 22 compression
 
+## Run
 ```bash
+DATA_PATH=../../../data/datasets/fineweb10B_sp1024/ \
+TOKENIZER_PATH=../../../data/tokenizers/fineweb_1024_bpe.model \
+VOCAB_SIZE=1024 \
 torchrun --standalone --nproc_per_node=8 train_gpt.py
 ```
 
-All defaults are baked into the script. Equivalent explicit invocation:
-
-```bash
-NUM_LAYERS=11 MLP_MULT=3 BIGRAM_VOCAB_SIZE=2048 \
-QAT_ENABLED=1 XSA_LAST_N=3 \
-MUON_WD=0.04 ADAM_WD=0.04 \
-MATRIX_LR=0.025 SCALAR_LR=0.025 TIED_EMBED_LR=0.035 \
-MUON_MOMENTUM=0.99 MUON_MOMENTUM_WARMUP_START=0.92 \
-MUON_MOMENTUM_WARMUP_STEPS=1500 WARMDOWN_ITERS=3000 \
-SWA_ENABLED=1 SWA_EVERY=120 \
-ITERATIONS=9000 MAX_WALLCLOCK_SECONDS=600 EVAL_STRIDE=64 \
-torchrun --standalone --nproc_per_node=8 train_gpt.py
-```
-
-## Expected Results
-
-Based on component analysis:
-- PR #198 base: ~1.1318 BPB (stride=64 sliding, int6 roundtrip)
-- + XSA on last 3 layers: ~-0.001 BPB (from PR #265)
-- + Int6 STE QAT: ~-0.005 BPB (close most of the 0.011 post-quant gap)
-- **Expected: ~1.124–1.128 BPB**
-
-## References
-
-- PR #198 (jfprincz): Base stack — 1.1318 BPB
-- PR #265 (unnir): XSA — arXiv:2603.09078
-- PR #194 (baudrillardsgh0st): Int6 STE QAT + SWA
+## Expected
+- ~6900 steps in 600s
+- Sliding window val_bpb: ~1.1246
+- Artifact: ~15.7 MB
